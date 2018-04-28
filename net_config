@@ -1,0 +1,30 @@
+[node1]
+id = 0
+host = localhost
+port = 3000
+mod_value = 0,1
+
+[node2]
+id = 1
+host = localhost
+port = 4001
+mod_value = 1,2
+
+
+[node3]
+id = 2
+host = localhost
+port = 5002
+mod_value = 2,3
+
+[node4]
+id = 3
+host = localhost
+port = 6003
+mod_value = 3,4
+
+[node5]
+id = 4
+host = localhost
+port = 7005
+mod_value = 4,0
