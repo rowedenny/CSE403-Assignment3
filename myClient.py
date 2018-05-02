@@ -4,8 +4,10 @@ import numpy as np
 import threading
 import time
 
+
 class myClient(threading.Thread):
-    def __init__(self, from_id, thread_id, nb_operations, key_range, send_queue, recv_queue, performance_queue):
+    def __init__(self, from_id, thread_id, nb_operations, key_range, send_queue, recv_queue, performance_queue,
+                 lock, metrics):
         threading.Thread.__init__(self)
         self.from_id = from_id
         self.thread_id = thread_id
@@ -14,6 +16,8 @@ class myClient(threading.Thread):
         self.recv_queue = recv_queue
         self.nb_operations = nb_operations
         self.performance_queue = performance_queue
+        self.lock = lock
+        self.metrics = metrics
 
     def generate_operation(self, ):
         """
@@ -127,8 +131,7 @@ class myClient(threading.Thread):
 
     def run(self, ):
         for i in range(self.nb_operations):
-            op_start = time.time()
-
+            start_time = time.time()
             op, key, value = self.generate_operation()
             print("Epoch {} Thread-{} generate operation {} , key: {}, value: {}".\
                   format(i, self.thread_id, op, key, value))
@@ -136,6 +139,7 @@ class myClient(threading.Thread):
             while True:
                 message_prepare = self.prepare(op, key, value)
                 nb_wait_vote = len(message_prepare)
+                nb_retry = 0
 
                 if op == 'get':
                     """Direct commit get operation"""
@@ -149,6 +153,11 @@ class myClient(threading.Thread):
                     else:
                         print("NOT FOUND! Epoch {} Thread-{} {} fail, key = {} not found".\
                               format(i, self.thread_id, op, key))
+
+                    with self.lock:
+                        self.metrics['operation_counter'] += 1
+                        self.metrics['latency'] += time.time() - start_time
+
                     break
 
                 else:
@@ -163,6 +172,11 @@ class myClient(threading.Thread):
                         self.wait_action_done(nb_wait_vote, 'commit_done')
                         print("SUCCEED! Epoch {} Thread-{} {}, key = {}, value = {}".\
                               format(i, self.thread_id, op, key, value))
+
+                        with self.lock:
+                            self.metrics['operation_counter'] += 1
+                            self.metrics['latency'] += time.time() - start_time
+
                         break
 
                     else:
@@ -170,12 +184,8 @@ class myClient(threading.Thread):
                         self.wait_action_done(nb_wait_vote, 'abort_done')
                         print("RETRY! Epoch {} Thread-{} {} fail, key = {}, value = {}.".\
                               format(i, self.thread_id, op, key, value))
-                        time.sleep(np.random.random_sample())
-            op_end = time.time()
-            latency.append(op_end - op_start)
 
-        end_time = time.time()
-        print('Throughout', self.nb_operations / (end_time - start_time))
-        print(latency)
-        print('Latency', np.mean(np.array(latency)))
+                        nb_retry += 1
+                        if nb_retry == 10:
+                            break
 

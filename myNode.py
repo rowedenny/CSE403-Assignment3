@@ -6,13 +6,19 @@ import time
 import queue
 import json
 import time
+import logging
 
 from configparser import ConfigParser
 from myClient import myClient
 from messageSender import messageSender
 from myDHTTable import myDHTTable
+from RepeatTimer import RepeatTimer
 
 MAX_DATA_SIZE = 2048
+
+_static_lock = threading.Lock()
+success_operation = 0
+latency = 0.0
 
 
 class myNode():
@@ -21,6 +27,15 @@ class myNode():
         self.conf_file = conf_file
         self.key_range = key_range
         self.rht_table = myDHTTable(self.key_range)
+
+        self._lock = threading.Lock()
+        self.interval = 5.0
+        self.metrics = dict()
+        self.metrics['operation_counter'] = 0
+        self.metrics['latency'] = 0.0
+
+        self.logger = None
+        self.__init_logger()
 
         # read configuration file
         self.config = [None for _ in range(5)]
@@ -42,7 +57,12 @@ class myNode():
         self.send_thread = messageSender(self.send_queue, self.socket_pool)
         self.send_thread.start()
 
+    def __init_logger(self):
+        self.logger = logging.getLogger('skipGram')
+        file_handler = logging.FileHandler("train.log")
 
+        self.logger.addHandler(file_handler)
+        self.logger.setLevel(logging.INFO)
 
     def listen(self, ):
         income_node = 0
@@ -73,8 +93,7 @@ class myNode():
                 try:
                     message = json.loads(message.decode('utf-8'))
                 except:
-                    print(b)
-                    print(message)
+                    continue
 
                 if message['status'] == 'propose':
                     message['reply'] = self.rht_table.conduct(message)
@@ -160,14 +179,29 @@ class myNode():
                 except:
                     time.sleep(1)
 
+    def monitor_thread(self, ):
+        throughout = self.metrics['operation_counter'] / self.interval
+        avg_latency = self.metrics['latency'] / self.metrics['operation_counter']
+
+        with _static_lock:
+            self.logger.info("Throughout = {}, average latency = {}".format(throughout, avg_latency))
+            self.metrics['operation_counter'] = 0
+            self.metrics['latency'] = 0.0
+
     def run_application(self, nb_worker=8, nb_operations=100):
+        thread_list = []
         for i in range(nb_worker):
             client = myClient(self.node_id, i, nb_operations, self.key_range, self.send_queue, self.recv_queue,
-                              self.performance_queue)
+                              self.performance_queue, self._lock, self.metrics)
+            thread_list.append(client)
             client.start()
 
+        RepeatTimer(self.interval, self.monitor_thread).start()
+
+        for thread in thread_list:
+            thread.join()
 
 
 if __name__ == "__main__":
     node = myNode(int(sys.argv[1]), "./net_config", key_range=int(sys.argv[2]))
-    node.run_application(nb_worker=8, nb_operations=10)
+    node.run_application(nb_worker=8, nb_operations=100)

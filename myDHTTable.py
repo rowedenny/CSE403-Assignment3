@@ -43,12 +43,15 @@ class myDHTTable:
 
         source_info = '/'.join([str(from_id), str(thread_id)])
         if status == 'propose':
+            print("PROPOSE from node-{} thread-{}".format(from_id, thread_id))
             return self.propose(key, source_info)
 
         elif status == 'commit':
+            print("COMMIT from node-{} thread-{}".format(from_id, thread_id))
             return self.commit(op, key, value)
 
         elif status == 'abort':
+            print("ABORT from node-{} thread-{}".format(from_id, thread_id))
             return self.abort(source_info)
 
     def propose(self, keys, source_info):
